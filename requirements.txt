@@ -1,0 +1,4 @@
+tweepy
+supabase
+requests
+python-dotenv

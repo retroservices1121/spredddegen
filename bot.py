@@ -68,8 +68,8 @@ def check_mentions():
         )
         thread_ids.append(first_tweet.id)
 
-        for market in live_markets:
-    text = f"📊 {market['description']}"
+    for market in live_markets:
+        text = f"📊 {market['description']}"
     if market.get('question'):
         text += f"\n❓ {market['question']}"
     text += f"\n⏰ Expiry: {market['expiry_date']}"

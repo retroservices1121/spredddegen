@@ -39,7 +39,7 @@ def set_last_mention_id(mention_id):
 
 # --- GET LIVE MARKETS FROM SUPABASE ---
 def get_live_markets(limit=5):
-    response = supabase.table("markets").select("*").eq("status", "active").limit(limit).execute()
+    response = supabase.table("question").select("*").eq("status", "active").limit(limit).execute()
     return response.data
 
 # ---

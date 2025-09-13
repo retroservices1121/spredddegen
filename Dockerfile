@@ -21,4 +21,4 @@ RUN useradd -m -u 1000 botuser && chown -R botuser:botuser /app
 USER botuser
 
 # Command to run the application
-CMD ["python", "main.py"]
+CMD ["python", "bot.py"]

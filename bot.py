@@ -39,7 +39,63 @@ def set_last_mention_id(mention_id):
 
 # --- GET LIVE MARKETS FROM SUPABASE ---
 def get_live_markets(limit=5):
-    response = supabase.table("question").select("*").eq("status", "active").limit(limit).execute()
+    response = supabase.table("markets").select("*")\
+        .gt("expiry_date", "now()")\
+        .limit(limit).execute()
     return response.data
 
-# ---
+# --- REPLY TO MENTIONS ---
+def check_mentions():
+    last_id = get_last_mention_id()
+    mentions = api.mentions_timeline(since_id=last_id, tweet_mode="extended")
+    mentions.reverse()  # oldest first
+
+    for mention in mentions:
+        print(f"Replying to {mention.user.screen_name}...")
+        live_markets = get_live_markets()
+        if not live_markets:
+            api.update_status(
+                f"Hey @{mention.user.screen_name}, there are no live markets at the moment.",
+                in_reply_to_status_id=mention.id
+            )
+            continue
+
+        # Create thread
+        thread_ids = []
+        first_tweet = api.update_status(
+            f"Hey @{mention.user.screen_name}, here are the latest live Spredd Markets #SpreddTheWord 🧵👇",
+            in_reply_to_status_id=mention.id
+        )
+        thread_ids.append(first_tweet.id)
+
+        for market in live_markets:
+    text = f"📊 {market['description']}"
+    if market.get('question'):
+        text += f"\n❓ {market['question']}"
+    text += f"\n⏰ Expiry: {market['expiry_date']}"
+
+    if market.get('image'):
+        media = api.media_upload(filename="temp.jpg", file=requests.get(market['image'], stream=True).raw)
+        tweet = api.update_status(
+            status=text,
+            in_reply_to_status_id=thread_ids[-1],
+            media_ids=[media.media_id]
+        )
+    else:
+        tweet = api.update_status(
+            status=text,
+            in_reply_to_status_id=thread_ids[-1]
+        )
+    thread_ids.append(tweet.id)
+
+        # Save last mention id
+        set_last_mention_id(mention.id)
+
+# --- POLLING LOOP ---
+if __name__ == "__main__":
+    while True:
+        try:
+            check_mentions()
+        except Exception as e:
+            print("Error:", e)
+        time.sleep(60)  # check every 60 seconds

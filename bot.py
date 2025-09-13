@@ -183,11 +183,13 @@ def check_mentions() -> None:
     try:
         last_id = get_last_mention_id()
         
-        # Get mentions using API v2 for better functionality
-        mentions = client.get_mentions(
+        # Get mentions using API v2 - correct method name
+        mentions = client.get_users_mentions(
+            id=client.get_me().data.id,
             since_id=last_id,
             max_results=10,
-            tweet_fields=['created_at', 'author_id', 'conversation_id']
+            tweet_fields=['created_at', 'author_id', 'conversation_id'],
+            user_fields=['username']
         )
         
         if not mentions.data:
@@ -275,6 +277,83 @@ def check_mentions() -> None:
             
     except Exception as e:
         logger.error(f"Error in check_mentions: {e}")
+        # If the API v2 method fails, fall back to v1.1 API
+        try:
+            logger.info("Falling back to Twitter API v1.1")
+            check_mentions_v1()
+        except Exception as fallback_error:
+            logger.error(f"Fallback to v1.1 also failed: {fallback_error}")
+
+# --- FALLBACK MENTIONS CHECK (API v1.1) ---
+def check_mentions_v1() -> None:
+    """Fallback method using Twitter API v1.1"""
+    try:
+        last_id = get_last_mention_id()
+        mentions = api.mentions_timeline(since_id=last_id, tweet_mode="extended", count=10)
+        
+        if not mentions:
+            logger.info("No new mentions found (v1.1)")
+            return
+        
+        mentions.reverse()  # oldest first
+        
+        for mention in mentions:
+            try:
+                logger.info(f"Processing mention from @{mention.user.screen_name}")
+                
+                # Get live markets
+                live_markets = get_live_markets(limit=5)
+                
+                if not live_markets:
+                    api.update_status(
+                        f"@{mention.user.screen_name} No live markets available at the moment. Check back soon! 📊",
+                        in_reply_to_status_id=mention.id
+                    )
+                    logger.info("Replied with no markets message (v1.1)")
+                    continue
+                
+                # Create thread using v1.1 API
+                thread_ids = []
+                first_tweet = api.update_status(
+                    f"@{mention.user.screen_name} 🚀 Here are {len(live_markets)} live Spredd Markets! #SpreddTheWord\n\n🧵 Thread below 👇",
+                    in_reply_to_status_id=mention.id
+                )
+                thread_ids.append(first_tweet.id)
+                
+                for i, market in enumerate(live_markets, 1):
+                    try:
+                        tweet_text = format_market_tweet(market, i, len(live_markets))
+                        
+                        # Create tweet with v1.1 API
+                        tweet = api.update_status(
+                            status=tweet_text,
+                            in_reply_to_status_id=thread_ids[-1]
+                        )
+                        thread_ids.append(tweet.id)
+                        logger.info(f"Created tweet for market {i} (v1.1)")
+                        time.sleep(2)
+                        
+                    except Exception as e:
+                        logger.error(f"Error creating tweet for market {i} (v1.1): {e}")
+                        continue
+                
+                # Closing tweet
+                api.update_status(
+                    "📈 Explore all markets at spredd.markets\n\n🔔 Follow for live market updates!",
+                    in_reply_to_status_id=thread_ids[-1]
+                )
+                
+                logger.info(f"Successfully created thread with {len(thread_ids)} tweets (v1.1)")
+                
+            except Exception as e:
+                logger.error(f"Error processing mention {mention.id} (v1.1): {e}")
+                continue
+            
+            set_last_mention_id(mention.id)
+            time.sleep(5)
+            
+    except Exception as e:
+        logger.error(f"Error in check_mentions_v1: {e}")
 
 # --- HEALTH CHECK ---
 def health_check() -> bool:

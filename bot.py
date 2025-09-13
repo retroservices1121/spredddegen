@@ -1,84 +1,45 @@
 import os
-import requests
-from supabase import create_client
+import time
 import tweepy
-from dotenv import load_dotenv
+from supabase import create_client, Client
 
-load_dotenv()
+# --- ENV VARS ---
+TWITTER_API_KEY = os.environ.get("TWITTER_API_KEY")
+TWITTER_API_SECRET = os.environ.get("TWITTER_API_SECRET")
+TWITTER_ACCESS_TOKEN = os.environ.get("TWITTER_ACCESS_TOKEN")
+TWITTER_ACCESS_SECRET = os.environ.get("TWITTER_ACCESS_SECRET")
 
-# --- Supabase Setup ---
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-def get_live_markets(limit=5):
-    response = supabase.table("markets")\
-        .select("id,title,image_url,expiration_date")\
-        .eq("status", "active")\
-        .order("expiration_date", desc=False)\
-        .limit(limit)\
-        .execute()
-    return response.data
+# --- SUPABASE CLIENT ---
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- Twitter Setup ---
-client = tweepy.Client(
-    consumer_key=os.getenv("TWITTER_API_KEY"),
-    consumer_secret=os.getenv("TWITTER_API_SECRET"),
-    access_token=os.getenv("TWITTER_ACCESS_TOKEN"),
-    access_token_secret=os.getenv("TWITTER_ACCESS_SECRET"),
-    bearer_token=os.getenv("TWITTER_BEARER_TOKEN")
+# --- TWEEPY CLIENT ---
+auth = tweepy.OAuth1UserHandler(
+    TWITTER_API_KEY,
+    TWITTER_API_SECRET,
+    TWITTER_ACCESS_TOKEN,
+    TWITTER_ACCESS_SECRET
 )
+api = tweepy.API(auth, wait_on_rate_limit=True)
 
-def download_image(url):
-    response = requests.get(url)
-    if response.status_code == 200:
-        file_path = "/tmp/temp.jpg"
-        with open(file_path, "wb") as f:
-            f.write(response.content)
-        return file_path
+# --- TRACK LAST REPLIED MENTION ---
+LAST_MENTION_FILE = "last_mention_id.txt"
+
+def get_last_mention_id():
+    if os.path.exists(LAST_MENTION_FILE):
+        with open(LAST_MENTION_FILE, "r") as f:
+            return int(f.read().strip())
     return None
 
-def post_markets_thread(mention_id, user_handle):
-    markets = get_live_markets()
-    if not markets:
-        client.create_tweet(
-            in_reply_to_tweet_id=mention_id,
-            text=f"Hey @{user_handle}, there are no live markets at the moment. Check back later!"
-        )
-        return
+def set_last_mention_id(mention_id):
+    with open(LAST_MENTION_FILE, "w") as f:
+        f.write(str(mention_id))
 
-    first_tweet = client.create_tweet(
-        in_reply_to_tweet_id=mention_id,
-        text=f"Hey @{user_handle}, here are the latest live Spredd Markets #SpreddTheWord 🧵👇"
-    )
-    last_tweet_id = first_tweet.data["id"]
+# --- GET LIVE MARKETS FROM SUPABASE ---
+def get_live_markets(limit=5):
+    response = supabase.table("markets").select("*").eq("status", "active").limit(limit).execute()
+    return response.data
 
-    for m in markets:
-        media_id = None
-        if m.get("image_url"):
-            img_path = download_image(m["image_url"])
-            if img_path:
-                media = client.media_upload(img_path)
-                media_id = media.media_id
-
-        text = f"📊 {m['question']}\n⏰ Expires: {m['expiry_date']}\n🔗 Play: https://spredd.markets/{m['id']}"
-
-        tweet = client.create_tweet(
-            in_reply_to_tweet_id=last_tweet_id,
-            text=text,
-            media_ids=[media_id] if media_id else None
-        )
-        last_tweet_id = tweet.data["id"]
-
-# --- Streaming Setup ---
-class MentionListener(tweepy.StreamingClient):
-    def on_tweet(self, tweet):
-        if tweet.author_id == client.get_me().data.id:
-            return
-        if "SpreddDegen" in tweet.text:
-            user_data = client.get_user(id=tweet.author_id)
-            user_handle = user_data.data.username
-            post_markets_thread(tweet.id, user_handle)
-
-if __name__ == "__main__":
-    stream = MentionListener(os.getenv("TWITTER_BEARER_TOKEN"))
-    stream.add_rules(tweepy.StreamRule("@SpreddDegen"))
-    stream.filter(expansions=["author_id"])
+# ---

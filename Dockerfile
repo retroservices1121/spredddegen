@@ -1,16 +1,24 @@
-# Use official Python base image
-FROM python:3.12-slim
+FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
-# Copy requirements and install
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the bot code
-COPY bot.py .
-COPY .env .
+# Copy application code
+COPY . .
 
-# Run the bot
-CMD ["python", "bot.py"]
+# Create non-root user for security
+RUN useradd -m -u 1000 botuser && chown -R botuser:botuser /app
+USER botuser
+
+# Command to run the application
+CMD ["python", "main.py"]

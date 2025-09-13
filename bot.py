@@ -40,7 +40,10 @@ if missing_vars:
 
 # --- SUPABASE CLIENT ---
 try:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    supabase: Client = create_client(
+        supabase_url=SUPABASE_URL, 
+        supabase_key=SUPABASE_KEY
+    )
     logger.info("Supabase client initialized successfully")
 except Exception as e:
     logger.error(f"Failed to initialize Supabase client: {e}")

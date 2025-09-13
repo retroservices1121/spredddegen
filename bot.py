@@ -89,7 +89,7 @@ def check_mentions():
     thread_ids.append(tweet.id)
 
         # Save last mention id
-        set_last_mention_id(mention.id)
+    set_last_mention_id(mention.id)
 
 # --- POLLING LOOP ---
 if __name__ == "__main__":
